@@ -38,6 +38,7 @@ American spelling: color organize analyze.`;
       apiKey: '',
       model: 'gpt-4o-mini',
       endpoint: 'http://localhost:3333',
+      proxyToken: '',
       lastText: '',
       undoStack: [],
       suggestions: {
@@ -50,6 +51,7 @@ American spelling: color organize analyze.`;
 
     this.analyseTimer = null;
     this.analysisCounter = 0;
+    this.llmTokenWarningShown = false;
   }
 
   init() {
@@ -73,7 +75,8 @@ American spelling: color organize analyze.`;
     this.header.setSettings({
       model: this.state.model,
       endpoint: this.state.endpoint,
-      useLLM: this.state.useLLM
+      useLLM: this.state.useLLM,
+      proxyToken: this.state.proxyToken
     });
 
     this.bindEvents();
@@ -98,6 +101,7 @@ American spelling: color organize analyze.`;
     this.state.model = saved.model || this.state.model;
     this.state.endpoint = saved.endpoint || this.state.endpoint;
     this.state.useLLM = !!saved.useLLM;
+    this.state.proxyToken = saved.proxyToken || this.state.proxyToken;
   }
 
   bindEvents() {
@@ -115,8 +119,14 @@ American spelling: color organize analyze.`;
     });
 
     this.header.onToggleLLM(() => {
-      const { useLLM } = this.header.getSettings();
+      const { useLLM, proxyToken } = this.header.getSettings();
       this.state.useLLM = !!useLLM;
+      if (this.state.useLLM && !(proxyToken || this.state.proxyToken)) {
+        this.toast.show('Configure proxy token before enabling OpenAI');
+      }
+      if (!this.state.useLLM) {
+        this.llmTokenWarningShown = false;
+      }
     });
 
     const actionHandlers = {
@@ -201,44 +211,58 @@ American spelling: color organize analyze.`;
 
   async handleSaveSettings() {
     const previousEndpoint = this.state.endpoint;
-    const { model, endpoint, useLLM } = this.header.getSettings();
+    const previousToken = this.state.proxyToken;
+    const { model, endpoint, useLLM, proxyToken } = this.header.getSettings();
 
     this.state.model = model || this.state.model;
     this.state.endpoint = (endpoint || 'http://localhost:3333').trim();
     this.state.useLLM = !!useLLM;
+    this.state.proxyToken = (proxyToken || '').trim();
+    this.llmTokenWarningShown = false;
 
-    storage.set(SETTINGS_KEY, {
+    const savedToStorage = storage.set(SETTINGS_KEY, {
       model: this.state.model,
       endpoint: this.state.endpoint,
-      useLLM: this.state.useLLM
+      useLLM: this.state.useLLM,
+      proxyToken: this.state.proxyToken
     });
 
     this.header.setSettings({
       model: this.state.model,
       endpoint: this.state.endpoint,
-      useLLM: this.state.useLLM
+      useLLM: this.state.useLLM,
+      proxyToken: this.state.proxyToken
     });
 
-    if (this.state.endpoint !== previousEndpoint) {
-      try {
-        const status = await this.refreshApiStatusAndModels({ silent: false });
-        if (status.ok) {
-          this.toast.show('Settings saved, models updated');
-        } else {
-          this.toast.show('Settings saved');
-        }
-      } catch (error) {
-        console.error('Failed to refresh models after saving settings', error);
-        this.toast.show('Settings saved');
+    let toastMessage = 'Settings saved';
+
+    try {
+      const shouldRefresh =
+        this.state.endpoint !== previousEndpoint || this.state.proxyToken !== previousToken;
+
+      const status = await this.refreshApiStatusAndModels({ silent: !shouldRefresh });
+      if (shouldRefresh && status.ok) {
+        toastMessage = 'Settings saved, models updated';
       }
-    } else {
-      this.toast.show('Settings saved');
+    } catch (error) {
+      console.error('Failed to refresh models after saving settings', error);
     }
+
+    if (!savedToStorage) {
+      toastMessage += ' (storage unavailable)';
+    }
+
+    this.toast.show(toastMessage);
   }
 
   async handleRefreshModels() {
     if (!this.state.endpoint) {
       this.toast.show('Please configure endpoint first');
+      return;
+    }
+
+    if (!this.state.proxyToken) {
+      this.toast.show('Please configure proxy token first');
       return;
     }
 
@@ -255,7 +279,25 @@ American spelling: color organize analyze.`;
   }
 
   async refreshApiStatusAndModels({ silent } = {}) {
-    const status = await testApiKey(this.state.endpoint);
+    if (!this.state.endpoint) {
+      const status = { ok: false, status: 'error', message: 'No endpoint configured' };
+      this.state.apiKey = '';
+      this.header.setApiStatus(status);
+      return status;
+    }
+
+    if (!this.state.proxyToken) {
+      const status = { ok: false, status: 'error', message: 'Proxy token missing' };
+      this.state.apiKey = '';
+      this.header.setApiStatus(status);
+      if (!silent) {
+        this.toast.show('Proxy token required to contact API');
+      }
+      await this.refreshModels({ silent: true });
+      return status;
+    }
+
+    const status = await testApiKey(this.state.endpoint, { token: this.state.proxyToken });
     this.state.apiKey = status.ok ? 'loaded-from-proxy' : '';
     this.header.setApiStatus(status);
     await this.refreshModels({ silent });
@@ -265,9 +307,12 @@ American spelling: color organize analyze.`;
   async refreshModels({ silent } = {}) {
     let models = DEFAULT_MODELS;
 
-    if (this.state.endpoint) {
+    if (this.state.endpoint && this.state.proxyToken) {
       try {
-        const fetched = await fetchModels(this.state.endpoint, { busy: this.overlay });
+        const fetched = await fetchModels(this.state.endpoint, {
+          busy: this.overlay,
+          token: this.state.proxyToken
+        });
         if (fetched && fetched.length > 0) {
           models = fetched;
         }
@@ -277,6 +322,8 @@ American spelling: color organize analyze.`;
           this.toast.show('Failed to fetch models, using defaults');
         }
       }
+    } else if (this.state.endpoint && !silent) {
+      this.toast.show('Proxy token required for remote models');
     }
 
     this.header.setModelOptions(models, this.state.model);
@@ -382,12 +429,18 @@ American spelling: color organize analyze.`;
     suggestions.clarity = heuristics.clarity;
     suggestions.tone = heuristics.tone;
 
-    if (this.state.useLLM) {
+    if (this.state.useLLM && !this.state.proxyToken) {
+      if (!this.llmTokenWarningShown) {
+        this.toast.show('Proxy token required for LLM analysis');
+        this.llmTokenWarningShown = true;
+      }
+    } else if (this.state.useLLM) {
       try {
         const llm = await analyseTextWithLLM(text, {
           endpoint: this.state.endpoint,
           model: this.state.model,
-          busy: this.overlay
+          busy: this.overlay,
+          token: this.state.proxyToken
         });
         ['grammar', 'clarity', 'tone'].forEach((key) => {
           suggestions[key] = [...suggestions[key], ...(llm[key] || [])];
@@ -413,12 +466,18 @@ American spelling: color organize analyze.`;
       return;
     }
 
-    if (this.state.useLLM) {
+    if (this.state.useLLM && !this.state.proxyToken) {
+      if (!this.llmTokenWarningShown) {
+        this.toast.show('Proxy token required for LLM rewrite');
+        this.llmTokenWarningShown = true;
+      }
+    } else if (this.state.useLLM) {
       try {
         const rewritten = await rewriteWithLLM(text, mode, {
           endpoint: this.state.endpoint,
           model: this.state.model,
-          busy: this.overlay
+          busy: this.overlay,
+          token: this.state.proxyToken
         });
         if (rewritten) {
           this.applyText(rewritten, { pushUndo: true });

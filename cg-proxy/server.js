@@ -5,15 +5,90 @@ import fetch from 'node-fetch';
 
 const app = express();
 const PORT = process.env.PORT || 3333;
-const OPENAI_BASE = (process.env.OPENAI_BASE || 'https://api.openai.com/v1').replace(/\/$/,'');
+const OPENAI_BASE = (process.env.OPENAI_BASE || 'https://api.openai.com/v1').replace(/\/$/, '');
 const KEY = process.env.OPENAI_API_KEY;
+const PROXY_TOKEN = process.env.CG_PROXY_TOKEN || '';
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'null')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOriginSet = new Set(ALLOWED_ORIGINS);
+const allowNullOrigin = allowedOriginSet.has('null');
+const allowAnyOrigin = allowedOriginSet.has('*');
 
-app.use(cors({
-  origin: true, // allow your local file / dev origin
+if (!PROXY_TOKEN) {
+  console.warn('⚠️  CG_PROXY_TOKEN is not set; proxy requests will be rejected until it is configured.');
+}
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) {
+    return true;
+  }
+
+  if (allowAnyOrigin) {
+    return true;
+  }
+
+  if (origin === 'null') {
+    return allowNullOrigin;
+  }
+
+  return allowedOriginSet.has(origin);
+};
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      // Non-browser or same-origin requests (e.g. curl) omit Origin; allow them.
+      return callback(null, false);
+    }
+
+    if (isAllowedOrigin(origin)) {
+      return callback(null, origin);
+    }
+
+    return callback(new Error('Not allowed by CORS'));
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CG-Proxy-Token'],
+};
+
+app.use((req, res, next) => {
+  if (isAllowedOrigin(req.headers.origin)) {
+    return next();
+  }
+
+  res.status(403).json({ error: 'Origin not allowed' });
+});
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
+
+function requireProxyToken(req, res, next) {
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
+  if (!PROXY_TOKEN) {
+    return res.status(500).json({ error: 'Proxy misconfigured: missing CG_PROXY_TOKEN' });
+  }
+
+  const providedToken = req.get('x-cg-proxy-token');
+  if (providedToken !== PROXY_TOKEN) {
+    return res.status(401).json({ error: 'Invalid or missing proxy token' });
+  }
+
+  return next();
+}
+
+app.use('/v1', requireProxyToken);
+
+app.use((err, _req, res, next) => {
+  if (err && err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: 'Origin not allowed' });
+  }
+  return next(err);
+});
 
 // Health check
 app.get('/health', (_req, res) => res.json({ ok: true }));
@@ -29,7 +104,7 @@ app.get('/v1/models', async (req, res) => {
       return res.status(401).json({ error: 'Missing API key in server environment' });
     }
 
-    console.log('🔑 Using API key:', KEY.substring(0, 10) + '...');
+    console.log('🔑 Using configured API key');
     const r = await retryRequest(`${OPENAI_BASE}/models`, {
       method: 'GET',
       headers: {

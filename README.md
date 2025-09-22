@@ -23,6 +23,8 @@ A local writing assistant web application that provides grammar, clarity, and to
 3. **Configure Environment**:
    - In `cg-proxy/`, create or edit the `.env` file.
    - Add your OpenAI API key: `OPENAI_API_KEY=your_openai_api_key_here`.
+   - Set a proxy secret that the browser must present: `CG_PROXY_TOKEN=choose-a-strong-local-secret`.
+   - (Optional) Restrict which origins may talk to the proxy: `ALLOWED_ORIGINS=http://localhost:3333,null` (comma-separated list; include `null` if you load the app via the `file://` protocol).
    - Optionally, set `PORT=3333` (default) or `OPENAI_BASE=https://api.openai.com/v1` (default).
 4. **Frontend**: No installation needed; open `index.html` in a modern web browser.
 
@@ -34,6 +36,7 @@ A local writing assistant web application that provides grammar, clarity, and to
 2. **Open the Web App**:
    - Open `index.html` in your browser (e.g., double-click the file or use a local server).
    - Configure the endpoint in the app settings to point to `http://localhost:3333` if not default.
+   - Enter the same proxy token you set in `.env` into the "Proxy token" field and click "Save settings".
 3. **Use the App**:
    - Paste or type text in the editor.
    - Press "Check" (or Ctrl+Enter) to analyze.
@@ -47,15 +50,20 @@ The proxy server requires an OpenAI API key to function with LLM features. Creat
 
 ```
 OPENAI_API_KEY=sk-your-actual-openai-api-key-here
+CG_PROXY_TOKEN=choose-a-strong-local-secret
+# Optional: allow specific origins (comma separated). Include "null" if you load the UI via file://
+ALLOWED_ORIGINS=http://localhost:3333,null
 ```
 
 - Replace `sk-your-actual-openai-api-key-here` with your real OpenAI API key from [OpenAI's dashboard](https://platform.openai.com/api-keys).
+- Replace `choose-a-strong-local-secret` with a random value; the browser must present this exact token in requests to use the proxy.
 - This key is used only by the local proxy server and is never sent to external services beyond OpenAI's API.
 - If no key is provided, the app falls back to local heuristics only.
 
 ### Optional Environment Variables
 - `PORT`: Server port (default: 3333).
 - `OPENAI_BASE`: OpenAI API base URL (default: https://api.openai.com/v1).
+- `ALLOWED_ORIGINS`: Comma-separated list of origins that may use the proxy (default: `null`).
 
 ## Usage Tips
 

@@ -11,6 +11,7 @@
           <span data-status="cache" class="status-indicator" style="margin-left:8px;color:var(--success);font-size:11px" title="Prompt caching enabled to reduce API costs">⚡ Cached</span>
         </div>
         <div class="pill"><span>Endpoint</span><input data-role="endpoint" placeholder="http://localhost:3333" style="width:230px"></div>
+        <div class="pill"><span>Proxy token</span><input data-role="proxy-token" type="password" placeholder="Required for proxy" autocomplete="off" spellcheck="false" style="width:180px"></div>
         <label class="pill" title="If off, runs in on-device demo mode"><input data-role="use-llm" type="checkbox"> Use OpenAI</label>
         <button data-action="save-settings" class="btn">Save settings</button>
       </div>
@@ -18,6 +19,7 @@
 
     const modelSelect = header.querySelector('[data-role="model"]');
     const endpointInput = header.querySelector('[data-role="endpoint"]');
+    const proxyTokenInput = header.querySelector('[data-role="proxy-token"]');
     const useLLMCheckbox = header.querySelector('[data-role="use-llm"]');
     const saveButton = header.querySelector('[data-action="save-settings"]');
     const refreshButton = header.querySelector('[data-action="refresh-models"]');
@@ -48,11 +50,12 @@
       return {
         model: modelSelect.value,
         endpoint: endpointInput.value.trim(),
-        useLLM: useLLMCheckbox.checked
+        useLLM: useLLMCheckbox.checked,
+        proxyToken: proxyTokenInput.value
       };
     }
 
-    function setSettings({ model, endpoint, useLLM }) {
+    function setSettings({ model, endpoint, useLLM, proxyToken }) {
       if (typeof endpoint === 'string') {
         endpointInput.value = endpoint;
       }
@@ -61,6 +64,9 @@
       }
       if (typeof model === 'string') {
         modelSelect.value = model;
+      }
+      if (typeof proxyToken === 'string') {
+        proxyTokenInput.value = proxyToken;
       }
     }
 

@@ -10,7 +10,13 @@
       }
     },
     set(key, value) {
-      localStorage.setItem(key, JSON.stringify(value));
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+        return true;
+      } catch (error) {
+        console.warn('Failed to write to localStorage', error);
+        return false;
+      }
     }
   };
 

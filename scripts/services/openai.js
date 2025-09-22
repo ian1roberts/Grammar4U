@@ -9,7 +9,7 @@
     { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
   ];
 
-  async function testApiKey(endpoint) {
+  async function testApiKey(endpoint, { token } = {}) {
     if (!endpoint) {
       return { ok: false, status: 'error', message: 'No endpoint configured' };
     }
@@ -19,7 +19,7 @@
     try {
       const response = await fetch(url, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: token ? { 'X-CG-Proxy-Token': token } : undefined
       });
 
       if (response.ok) {
@@ -29,7 +29,12 @@
       const text = await response.text().catch(() => 'Unknown error');
 
       if (response.status === 401) {
-        return { ok: false, status: 'error', message: 'Proxy: API key missing', detail: text };
+        return {
+          ok: false,
+          status: 'error',
+          message: text.includes('proxy token') ? 'Proxy: token rejected' : 'Proxy: API key missing',
+          detail: text
+        };
       }
 
       if (response.status === 404) {
@@ -43,7 +48,7 @@
     }
   }
 
-  async function fetchModels(endpoint, { busy, signal } = {}) {
+  async function fetchModels(endpoint, { busy, signal, token } = {}) {
     if (!endpoint) {
       return null;
     }
@@ -54,7 +59,7 @@
     try {
       const response = await fetch(url, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        headers: token ? { 'X-CG-Proxy-Token': token } : undefined,
         signal
       });
 
@@ -77,7 +82,7 @@
     }
   }
 
-  async function requestChatCompletion(endpoint, body, { busy, message } = {}) {
+  async function requestChatCompletion(endpoint, body, { busy, message, token } = {}) {
     if (!endpoint) {
       throw new Error('Missing endpoint');
     }
@@ -87,7 +92,10 @@
     try {
       const response = await fetch(endpoint.replace(/\/$/, '') + '/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'X-CG-Proxy-Token': token } : {})
+        },
         body: JSON.stringify(body)
       });
 
@@ -110,7 +118,7 @@
     cache_control: { type: 'ephemeral' }
   };
 
-  async function analyseTextWithLLM(text, { endpoint, model, busy }) {
+  async function analyseTextWithLLM(text, { endpoint, model, busy, token }) {
     if (!endpoint) {
       throw new Error('Missing endpoint');
     }
@@ -132,7 +140,7 @@
           temperature: 0.1,
           messages: [ANALYSE_SYSTEM_PROMPT, { role: 'user', content: `Text (chunk ${index + 1}/${chunks.length}):\n${chunk}` }]
         },
-        { busy }
+        { busy, token }
       );
 
       let parsed;
@@ -198,7 +206,7 @@
     cache_control: { type: 'ephemeral' }
   };
 
-  async function rewriteWithLLM(text, mode, { endpoint, model, busy }) {
+  async function rewriteWithLLM(text, mode, { endpoint, model, busy, token }) {
     const instruction = REWRITE_PROMPTS[mode];
     if (!instruction) {
       throw new Error(`Unknown rewrite mode: ${mode}`);
@@ -211,7 +219,7 @@
         temperature: 0.25,
         messages: [REWRITE_SYSTEM_PROMPT, { role: 'user', content: `${instruction}\n\nText:\n"""${text}"""` }]
       },
-      { busy }
+      { busy, token }
     );
 
     return content;
