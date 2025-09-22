@@ -1,0 +1,29 @@
+:root {
+  --muted: #8a97b1;
+  --text: #e7ecf5;
+  --accent: #88aaff;
+  --accent2: #57d3a0;
+  --warn: #f7b955;
+  --error: #ff6b6b;
+  --shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  --r: 16px;
+  --panel: #0f1424;
+  --card: #12172a;
+  --success: #57d3a0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0b0e14;
+  color: var(--text);
+  font: 500 15px/1.55 Inter, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}

@@ -1,4 +1,4 @@
-# Coding Grammarly
+# Coding Grammar4U
 
 A local writing assistant web application that provides grammar, clarity, and tone analysis for text. It combines fast local heuristics with optional OpenAI LLM integration for advanced suggestions, all running entirely on your device for privacy.
 
